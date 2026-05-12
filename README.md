@@ -1,5 +1,7 @@
 # 尘白MOD管理柒
 
+🇨🇳 [中文](./README.md) | 🇬🇧 [English](./README_EN.md)
+
 ## 📌 快速上手
 
 1. **设置 MOD 管理文件夹（源MOD目录）**  
