@@ -1,5 +1,7 @@
 # Snowbreak MOD Manager
 
+🇨🇳 [中文](./README.md) | 🇬🇧 [English](./README_EN.md)
+
 ## 📌 Quick Start
 
 1. **Set MOD Library Folder (Source MOD Directory)**  
