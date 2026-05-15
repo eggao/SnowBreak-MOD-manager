@@ -1,4 +1,6 @@
 /build
 /dist
-__pycache__/
+/__pycache__
 *.py[cod]
+/cache
+/mod_manager.config.json

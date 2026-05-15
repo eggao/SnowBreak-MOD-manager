@@ -1,11 +1,32 @@
+import os
 import sys
+import ctypes
 from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtGui import QIcon
 from config import load_config, save_config
+from config import resource_path
 from ui import MainWindow, THEME_QSS
 from i18n import init_i18n, tr
+from utils import has_symlink_permission, relaunch_as_admin
 
 def main():
+    if sys.platform == "win32":
+        cfg = load_config()
+        if cfg.get("symlink_mode", True) and not has_symlink_permission():
+            relaunch_as_admin()
+            sys.exit(0)
+
+        app_id = "chenbai.mod_manager"
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+        except Exception:
+            pass
+
     app = QApplication(sys.argv)
+
+    icon_path = resource_path("icon.ico")
+    if os.path.isfile(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
     
     # Modern style
     app.setStyle("Fusion")

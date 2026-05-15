@@ -1,5 +1,8 @@
 import os
+import shutil
 import sys
+import ctypes
+import hashlib
 from typing import Optional
 
 from PyQt6.QtCore import QSize
@@ -50,6 +53,83 @@ def find_preview_image_for_pak(pak_path: str) -> Optional[str]:
         if os.path.isfile(candidate):
             return candidate
     return None
+
+def has_symlink_permission() -> bool:
+    cache_dir = os.path.join(get_app_dir(), "cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    test_src = os.path.join(cache_dir, ".symlink_test_src")
+    test_dst = os.path.join(cache_dir, ".symlink_test_dst")
+    try:
+        with open(test_src, "w") as f:
+            f.write("test")
+        os.symlink(test_src, test_dst)
+        return True
+    except OSError:
+        return False
+    finally:
+        for p in (test_src, test_dst):
+            try:
+                if os.path.islink(p):
+                    os.unlink(p)
+                elif os.path.isfile(p):
+                    os.remove(p)
+            except Exception:
+                pass
+
+def relaunch_as_admin():
+    try:
+        exe = sys.executable
+        args = " ".join(f'"{a}"' for a in sys.argv)
+        ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", exe, args, None, 1
+        )
+    except Exception:
+        pass
+
+def symlink_or_copy(src: str, dst: str, use_symlink: bool = True) -> bool:
+    if not os.path.isfile(src):
+        return False
+    if os.path.lexists(dst):
+        try:
+            os.unlink(dst)
+        except OSError:
+            pass
+    if use_symlink:
+        try:
+            os.symlink(src, dst)
+            return True
+        except OSError:
+            pass
+    try:
+        shutil.copy2(src, dst)
+        return True
+    except Exception:
+        return False
+
+THUMB_CELL_SIZE = QSize(56, 38)
+
+def get_thumb_cache_path(src_path: str, target_size: QSize) -> str:
+    key = f"{src_path}_{target_size.width()}x{target_size.height()}"
+    hash_name = hashlib.md5(key.encode("utf-8")).hexdigest()
+    cache_dir = os.path.join(get_app_dir(), "cache", "thumbs")
+    os.makedirs(cache_dir, exist_ok=True)
+    return os.path.join(cache_dir, hash_name + ".png")
+
+def load_cached_thumb(src_path: str, target_size: QSize) -> Optional[QPixmap]:
+    if not os.path.isfile(src_path):
+        return None
+    cache_path = get_thumb_cache_path(src_path, target_size)
+    if os.path.isfile(cache_path):
+        src_mtime = os.path.getmtime(src_path)
+        cache_mtime = os.path.getmtime(cache_path)
+        if cache_mtime >= src_mtime:
+            pixmap = QPixmap(cache_path)
+            if not pixmap.isNull():
+                return pixmap
+    pixmap = load_qpixmap(src_path, target_size)
+    if pixmap and not pixmap.isNull():
+        pixmap.save(cache_path, "PNG")
+    return pixmap
 
 def load_qpixmap(image_path: str, max_size: Optional[QSize] = None) -> Optional[QPixmap]:
     if not os.path.isfile(image_path):

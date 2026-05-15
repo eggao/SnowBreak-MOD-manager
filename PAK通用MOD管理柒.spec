@@ -20,7 +20,7 @@ exe = EXE(
     pyz,
     a.scripts,
     [],
-    name='尘白禁区MOD管理柒',
+    name='PAK通用MOD管理柒',
     debug=False,
     bootloader_ignore_signals=False,
     exclude_binaries=True,
@@ -44,5 +44,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='尘白禁区MOD管理柒',
+    name='PAK通用MOD管理柒',
 )

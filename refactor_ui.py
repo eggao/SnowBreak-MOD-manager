@@ -87,7 +87,7 @@ def main():
 
     def retranslateUi(self):
         from i18n import tr
-        self.setWindowTitle(tr("尘白MOD管理柒"))
+        self.setWindowTitle(tr("PAK通用MOD管理柒"))
         self.lbl_src.setText(tr("源MOD目录："))
         self.btn_src.setText(tr("选择..."))
         self.lbl_tgt.setText(tr("目标MOD目录："))

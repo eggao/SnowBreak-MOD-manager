@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import stat
@@ -14,9 +15,9 @@ from PyQt6.QtWidgets import (
 )
 
 from config import load_config, save_config, normalize_path, resource_path
-from utils import PIL_AVAILABLE, PIL_IMPORT_ERROR, get_pillow_webp_support, is_pak_file, load_qpixmap
+from utils import PIL_AVAILABLE, PIL_IMPORT_ERROR, get_pillow_webp_support, is_pak_file, load_qpixmap, load_cached_thumb, symlink_or_copy, has_symlink_permission, relaunch_as_admin, THUMB_CELL_SIZE
 from models import FsNode, FsTreeModel, TreeItemDelegate
-from workers import ScanWorker, ThumbLoaderWorker
+from workers import ScanWorker, ThumbLoaderWorker, CommentMigrateWorker
 from i18n import tr, get_available_languages, get_language, set_language
 from transfer_helpers import ClipboardFilePasteHelper, PasteDropImageLabel, RemoteImageFetcher
 
@@ -389,6 +390,7 @@ class TreeViewModel(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._migrate_worker: Optional[CommentMigrateWorker] = None
         self._scan_worker: Optional[ScanWorker] = None
         self._thumb_worker: Optional[ThumbLoaderWorker] = None
         self._model: Optional[FsTreeModel] = None
@@ -423,6 +425,9 @@ class TreeViewModel(QObject):
         self._sort_mode = sort_mode or "name_asc"
         self._dnd_mode = bool(dnd_mode)
 
+        if self._migrate_worker and self._migrate_worker.isRunning():
+            self._migrate_worker.cancel()
+            self._migrate_worker.wait()
         if self._scan_worker and self._scan_worker.isRunning():
             self._scan_worker.cancel()
             self._scan_worker.wait()
@@ -433,6 +438,30 @@ class TreeViewModel(QObject):
         self._model = None
         self._root = None
 
+        legacy = {}
+        try:
+            cfg = load_config()
+            legacy = cfg.get("comments", {})
+        except Exception:
+            legacy = {}
+
+        if isinstance(legacy, dict) and legacy:
+            self.loading_changed.emit(True, tr("正在迁移旧备注..."))
+            self._migrate_worker = CommentMigrateWorker(self._source_dir, legacy)
+            self._migrate_worker.finished_signal.connect(self._on_migrate_finished)
+            self._migrate_worker.start()
+            return
+
+        self._start_scan()
+
+    def _on_migrate_finished(self):
+        try:
+            save_config({"comments": {}})
+        except Exception:
+            pass
+        self._start_scan()
+
+    def _start_scan(self):
         self.loading_changed.emit(True, tr("正在读取源MOD目录结构..."))
         self._scan_worker = ScanWorker(self._source_dir)
         self._scan_worker.finished_signal.connect(self._on_scan_finished)
@@ -475,17 +504,21 @@ class TreeViewModel(QObject):
         if self._model:
             self._model.set_node_thumb(node, pixmap)
 
-    def _is_pak_enabled(self, source_pak_path: str) -> bool:
+    def _is_pak_enabled(self, source_pak_path: str):
         if not self._source_dir or not self._target_dir:
-            return False
+            return False, None
         if not os.path.isdir(self._target_dir):
-            return False
+            return False, None
         try:
             rel = os.path.relpath(source_pak_path, self._source_dir)
         except Exception:
-            return False
+            return False, None
         candidate = normalize_path(os.path.join(self._target_dir, rel))
-        return os.path.isfile(candidate)
+        if os.path.islink(candidate):
+            return True, "link"
+        if os.path.isfile(candidate):
+            return True, "copy"
+        return False, None
 
     def update_enabled_marks(self) -> None:
         if not self._model:
@@ -513,7 +546,9 @@ class TreeViewModel(QObject):
                 return total, enabled
 
             if node.is_pak:
-                node.pak_enabled = self._is_pak_enabled(node.path)
+                enabled, link_mode = self._is_pak_enabled(node.path)
+                node.pak_enabled = enabled
+                node.link_mode = link_mode
                 return 1, 1 if node.pak_enabled else 0
 
             return 0, 0
@@ -521,12 +556,193 @@ class TreeViewModel(QObject):
         walk(self._model._root)
         self._model.refresh_state_ui()
 
+    def save_pak_comment(self, pak_path: str, comment: str) -> None:
+        pak_path = normalize_path(pak_path)
+        if not pak_path or not pak_path.lower().endswith(".pak"):
+            return
+
+        pak_dir = normalize_path(os.path.dirname(pak_path))
+        pak_name = os.path.basename(pak_path)
+        if not pak_dir or not pak_name:
+            return
+
+        info_path = os.path.join(pak_dir, "info.json")
+        data = {}
+        try:
+            if os.path.isfile(info_path):
+                with open(info_path, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    data = loaded
+        except Exception:
+            data = {}
+
+        comments = data.get("comments")
+        if not isinstance(comments, dict):
+            comments = {}
+
+        comment = (comment or "").strip()
+        if comment:
+            comments[pak_name] = comment
+        else:
+            comments.pop(pak_name, None)
+
+        if comments:
+            data["comments"] = comments
+            try:
+                tmp = info_path + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                os.replace(tmp, info_path)
+            except Exception:
+                pass
+        else:
+            try:
+                if os.path.isfile(info_path):
+                    os.remove(info_path)
+            except Exception:
+                pass
+
+        try:
+            cfg = load_config()
+            legacy = cfg.get("comments", {})
+            if isinstance(legacy, dict):
+                rel = ""
+                try:
+                    rel = os.path.relpath(pak_path, self._source_dir)
+                except Exception:
+                    rel = ""
+                if rel:
+                    if rel in legacy:
+                        legacy.pop(rel, None)
+                        save_config({"comments": legacy})
+        except Exception:
+            pass
+
+    def rename_pak_comment_key(self, old_pak_path: str, new_pak_path: str) -> None:
+        old_pak_path = normalize_path(old_pak_path)
+        new_pak_path = normalize_path(new_pak_path)
+        if not old_pak_path or not new_pak_path:
+            return
+        if not old_pak_path.lower().endswith(".pak") or not new_pak_path.lower().endswith(".pak"):
+            return
+
+        old_dir = normalize_path(os.path.dirname(old_pak_path))
+        new_dir = normalize_path(os.path.dirname(new_pak_path))
+        old_name = os.path.basename(old_pak_path)
+        new_name = os.path.basename(new_pak_path)
+        if not old_dir or not old_name or not new_name:
+            return
+
+        info_path = os.path.join(old_dir, "info.json")
+        if not os.path.isfile(info_path):
+            return
+
+        try:
+            with open(info_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict):
+                return
+            comments = data.get("comments")
+            if not isinstance(comments, dict):
+                return
+            if old_name not in comments:
+                return
+            comments[new_name] = str(comments.get(old_name, ""))
+            comments.pop(old_name, None)
+            if not comments:
+                os.remove(info_path)
+                return
+            data["comments"] = comments
+            tmp = info_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, info_path)
+        except Exception:
+            return
+
+class ToggleSwitch(QWidget):
+    toggled = pyqtSignal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._checked = False
+        self._knob_pos = 0.0
+
+        self._track_width = 44
+        self._track_height = 24
+        self._knob_size = 18
+        self._knob_margin = 3
+
+        self._anim = QVariantAnimation(self)
+        self._anim.setDuration(220)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._anim.valueChanged.connect(self._on_anim_value)
+
+        self.setFixedSize(self._track_width, self._track_height)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def checked(self) -> bool:
+        return self._checked
+
+    def setChecked(self, checked: bool, animate: bool = False):
+        if self._checked == checked and self._knob_pos == (1.0 if checked else 0.0):
+            return
+        self._checked = checked
+        target = 1.0 if checked else 0.0
+        if animate:
+            self._anim.stop()
+            self._anim.setStartValue(self._knob_pos)
+            self._anim.setEndValue(target)
+            self._anim.start()
+        else:
+            self._knob_pos = target
+            self.update()
+
+    def _on_anim_value(self, value: float):
+        self._knob_pos = value
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+        track_rect = QRect(0, 0, self._track_width, self._track_height)
+        radius = self._track_height // 2
+
+        track_color = QColor("#3B82F6") if self._checked else QColor("#1F2A44")
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(track_color)
+        painter.drawRoundedRect(track_rect, radius, radius)
+
+        knob_range = self._track_width - self._knob_size - 2 * self._knob_margin
+        knob_x = track_rect.x() + self._knob_margin + int(self._knob_pos * knob_range)
+        knob_y = track_rect.y() + (self._track_height - self._knob_size) // 2
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#E5E7EB"))
+        painter.drawEllipse(QRect(knob_x, knob_y, self._knob_size, self._knob_size))
+
+        painter.end()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.rect().contains(event.pos()):
+                self._toggle()
+        super().mouseReleaseEvent(event)
+
+    def _toggle(self):
+        self.setChecked(not self._checked, animate=True)
+        self.toggled.emit(self._checked)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(tr("尘白MOD管理柒"))
+        self.setWindowTitle(tr("PAK通用MOD管理柒"))
         
-        icon_path = resource_path("icon.png")
+        icon_path = resource_path("icon.ico")
         if os.path.isfile(icon_path):
             self.setWindowIcon(QIcon(icon_path))
             
@@ -534,11 +750,12 @@ class MainWindow(QMainWindow):
 
         self._vm = TreeViewModel(self)
         self._tree_model: Optional[FsTreeModel] = None
-        self._dnd_mode_enabled = False
         self._current_sort_mode = "name_asc"
         self._help_window = None
         
         cfg = load_config()
+        self._dnd_mode_enabled = cfg.get("dnd_mode", False)
+        self._symlink_mode = cfg.get("symlink_mode", True)
         self.source_dir = normalize_path(str(cfg.get("source_dir", "")))
         self.target_dir = normalize_path(str(cfg.get("target_dir", "")))
 
@@ -551,6 +768,10 @@ class MainWindow(QMainWindow):
 
         self._build_ui()
         self._apply_theme()
+
+        if self._dnd_mode_enabled:
+            self.btn_dnd.setChecked(True)
+            self.btn_dnd.setText(tr("免打扰：开"))
 
         self._vm.loading_changed.connect(self._set_loading)
         self._vm.error.connect(lambda err: self._error(tr("读取失败"), err))
@@ -715,6 +936,9 @@ class MainWindow(QMainWindow):
         self.tree_view.setMinimumWidth(730) # 限制左侧表格最小宽度
         self.tree_view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tree_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tree_view.setUniformRowHeights(True)
+        self.tree_view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.tree_view.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.tree_view.setAlternatingRowColors(False)
         self.tree_view.setAnimated(True)
         self.tree_view.setMouseTracking(True)
@@ -756,6 +980,9 @@ class MainWindow(QMainWindow):
         self.path_edit = QLineEdit()
         self.path_edit.setReadOnly(True)
         path_layout.addWidget(self.path_edit, 1)
+        self.btn_open_dir = QPushButton(tr("打开"))
+        self.btn_open_dir.clicked.connect(self._on_open_dir_clicked)
+        path_layout.addWidget(self.btn_open_dir)
         right_layout.addLayout(path_layout)
 
         self.lbl_preview_title = QLabel(tr("预览："))
@@ -799,10 +1026,22 @@ class MainWindow(QMainWindow):
         # Bottom section
         bottom_layout = QHBoxLayout()
         bottom_layout.setSpacing(8)
+
+        self.lbl_status = QLabel("")
+        self.lbl_status.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         
         self.btn_help = QPushButton(tr("帮助"))
         self.btn_help.setProperty("variant", "primary")
         self.btn_help.clicked.connect(self._show_help)
+
+        self.toggle_mode = ToggleSwitch()
+        self.toggle_mode.setChecked(self._symlink_mode)
+        self.toggle_mode.toggled.connect(self._on_mode_toggled)
+
+        self.lbl_mode = QLabel(tr("链接") if self._symlink_mode else tr("拷贝"))
+        self.lbl_mode.setProperty("role", "sectionTitle")
+        self.lbl_mode.setFixedWidth(50)
+
         self.btn_exit = QPushButton(tr("退出"))
         self.btn_exit.setProperty("variant", "danger")
         self.btn_exit.clicked.connect(self.close)
@@ -822,7 +1061,10 @@ class MainWindow(QMainWindow):
         
         if hasattr(self, "action_widget") and self.action_widget:
             bottom_layout.addWidget(self.action_widget)
+        bottom_layout.addWidget(self.lbl_status)
         bottom_layout.addStretch()
+        bottom_layout.addWidget(self.toggle_mode)
+        bottom_layout.addWidget(self.lbl_mode)
         bottom_layout.addWidget(self.btn_help)
         bottom_layout.addWidget(self.combo_lang)
         bottom_layout.addWidget(self.btn_exit)
@@ -840,7 +1082,7 @@ class MainWindow(QMainWindow):
         from i18n import tr
         
         # Top layout
-        self.setWindowTitle(tr("尘白MOD管理柒"))
+        self.setWindowTitle(tr("PAK通用MOD管理柒"))
         if hasattr(self, 'lbl_src'): self.lbl_src.setText(tr("源MOD目录："))
         if hasattr(self, 'btn_src'): self.btn_src.setText(tr("选择..."))
         if hasattr(self, 'btn_open_src'): self.btn_open_src.setText(tr("打开"))
@@ -881,6 +1123,7 @@ class MainWindow(QMainWindow):
         # Right layout
         if hasattr(self, 'lbl_sel_info'): self.lbl_sel_info.setText(tr("选中项信息"))
         if hasattr(self, 'lbl_path'): self.lbl_path.setText(tr("路径："))
+        if hasattr(self, 'btn_open_dir'): self.btn_open_dir.setText(tr("打开"))
         if hasattr(self, 'lbl_preview_title'): self.lbl_preview_title.setText(tr("预览："))
         
         if hasattr(self, 'lbl_preview_img') and (not hasattr(self, "_current_preview_path") or not self._current_preview_path):
@@ -889,6 +1132,8 @@ class MainWindow(QMainWindow):
         # Bottom layout
         if hasattr(self, 'btn_help'): self.btn_help.setText(tr("帮助"))
         if hasattr(self, 'btn_exit'): self.btn_exit.setText(tr("退出"))
+        if hasattr(self, 'lbl_mode'):
+            self.lbl_mode.setText(tr("链接") if self._symlink_mode else tr("拷贝"))
         
         if getattr(self, "_tree_model", None):
             self._tree_model.retranslate()
@@ -941,6 +1186,16 @@ class MainWindow(QMainWindow):
             return
         self._open_file_with_system(path)
 
+    def _on_open_dir_clicked(self):
+        current_path = self.path_edit.text()
+        if not current_path:
+            return
+        dir_path = current_path
+        if os.path.isfile(current_path):
+            dir_path = os.path.dirname(current_path)
+        if os.path.isdir(dir_path):
+            self._open_file_with_system(dir_path)
+
     def _show_ok_dialog(self, icon: QMessageBox.Icon, title: str, text: str):
         box = QMessageBox(self)
         box.setIcon(icon)
@@ -985,6 +1240,8 @@ class MainWindow(QMainWindow):
 
     def _set_loading(self, is_loading: bool, msg: str):
         self.btn_refresh.setEnabled(not is_loading)
+        if hasattr(self, "lbl_status") and self.lbl_status:
+            self.lbl_status.setText(msg if is_loading else "")
 
     def refresh_source_tree(self):
         self.source_dir = normalize_path(self.src_edit.text())
@@ -1014,7 +1271,7 @@ class MainWindow(QMainWindow):
         self.tree_view.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.tree_view.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         self.tree_view.header().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        self.tree_view.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self.tree_view.header().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         self.tree_view.header().setStretchLastSection(False)
         
         cfg = load_config()
@@ -1026,8 +1283,7 @@ class MainWindow(QMainWindow):
             col2_width = 120
         self.tree_view.setColumnWidth(2, col2_width)
         
-        col3_width = cfg.get("col3_width", 150)
-        self.tree_view.setColumnWidth(3, col3_width)
+        self.tree_view.setColumnWidth(3, 120)
         
         self.tree_view.selectionModel().selectionChanged.connect(self._on_tree_select)
         self.tree_view.header().sectionResized.connect(self._on_column_resized)
@@ -1163,11 +1419,12 @@ class MainWindow(QMainWindow):
         sizes = self.splitter.sizes()
         config_update = {
             "window_geometry": geometry_hex,
-            "splitter_sizes": sizes
+            "splitter_sizes": sizes,
+            "dnd_mode": self._dnd_mode_enabled,
+            "symlink_mode": self._symlink_mode
         }
         if self.tree_view.model():
             config_update["col2_width"] = self.tree_view.columnWidth(2)
-            config_update["col3_width"] = self.tree_view.columnWidth(3)
             
         save_config(config_update)
         super().closeEvent(event)
@@ -1189,7 +1446,7 @@ class MainWindow(QMainWindow):
     def _build_help_html(self) -> str:
         return (
             "<div style='line-height: 2em;font-size:14px;'>"
-            "<h3 style='margin-bottom: 12px;'>" + tr("尘白MOD管理柒 帮助指南") + "</h3>"
+            "<h3 style='margin-bottom: 12px;'>" + tr("PAK通用MOD管理柒 帮助指南") + "</h3>"
             "<h4 style='margin: 14px 0 8px 0;'>" + tr("快速上手") + "</h4>"
             "<ol style='margin: 0; padding-left: 24px;'>"
             "<li style='margin-bottom: 10px;'>" + tr("<b>1. 设置 MOD 管理文件夹（源MOD目录）</b><br>选择一个用于存放 MOD 文件的文件夹。建议与 MOD 管理器所在的目录保持一致。") + "</li>"
@@ -1202,6 +1459,7 @@ class MainWindow(QMainWindow):
             "<li style='margin-bottom: 10px;'>" + tr("<b>源MOD目录：</b>你的 MOD 管理文件夹，用于存放所有 MOD 文件（建议自行分类整理）。可点击“选择...”选择文件夹，或点击“打开”在资源管理器中打开。") + "</li>"
             "<li style='margin-bottom: 10px;'>" + tr("<b>目标MOD目录：</b>游戏读取 MOD 的目录，通常为 <code style='background-color: rgba(128, 128, 128, 0.2); padding: 2px 4px; border-radius: 4px;'>游戏文件夹/Game/Content/Paks/mods</code>。如果没有 mods 目录，需要手动创建。可点击“选择...”设置路径，或点击“打开”快速定位目录。") + "</li>"
             "<li style='margin-bottom: 10px;'>" + tr("<b>清空目标目录：</b>点击“清空目标目录”可从游戏 MOD 安装目录中移除所有已安装的 MOD。") + "</li>"
+            "<li style='margin-bottom: 10px;'>" + tr("<b>应用模式：</b>底部栏的滑动开关可在“链接”与“拷贝”模式间切换。<b>链接模式</b>通过创建符号链接启用MOD，无需复制文件，节省磁盘空间且操作更快；<b>拷贝模式</b>则将文件复制到目标目录。切换至链接模式时需要管理员权限，若无权限将弹窗确认后以管理员身份重启。启用后，状态列会标注“已启用 · 链接”或“已启用 · 拷贝”。") + "</li>"
             "<li style='margin-bottom: 10px;'>" + tr("<b>免打扰模式：</b>开启后，会隐藏不包含 .pak 的无关项，让列表更清爽。") + "</li>"
             "<li style='margin-bottom: 10px;'>" + tr("<b>排序：</b>支持按名称/时间的升序与降序排序，并会尽量保留你当前展开的目录状态。") + "</li>"
             "<li style='margin-bottom: 10px;'>" + tr("<b>全部展开/全部收起：</b>若当前选中了某个目录，将只对该目录递归展开/收起；否则对整个列表展开/收起。") + "</li>"
@@ -1279,7 +1537,30 @@ class MainWindow(QMainWindow):
             expanded_paths = self._get_expanded_paths()
             self._vm.set_dnd_mode(checked)
             self._restore_expanded_paths(expanded_paths)
-            
+
+    def _on_mode_toggled(self, checked: bool):
+        if checked:
+            if not has_symlink_permission():
+                box = QMessageBox(self)
+                box.setWindowTitle(tr("提示"))
+                box.setIcon(QMessageBox.Icon.Question)
+                box.setText(tr("软连接模式需要管理员权限，是否以管理员身份重启程序？"))
+                btn_ok = box.addButton(tr("确定"), QMessageBox.ButtonRole.AcceptRole)
+                btn_cancel = box.addButton(tr("取消"), QMessageBox.ButtonRole.RejectRole)
+                box.exec()
+                if box.clickedButton() == btn_cancel:
+                    self.toggle_mode.setChecked(False)
+                    return
+                self._symlink_mode = True
+                relaunch_as_admin()
+                self.close()
+                return
+            self._symlink_mode = True
+            self.lbl_mode.setText(tr("链接"))
+        else:
+            self._symlink_mode = False
+            self.lbl_mode.setText(tr("拷贝"))
+        
     def _expand_all(self):
         sel_model = self.tree_view.selectionModel()
         if sel_model and sel_model.hasSelection():
@@ -1436,6 +1717,12 @@ class MainWindow(QMainWindow):
                 
         try:
             os.rename(node.path, new_path)
+
+            if node.is_pak:
+                try:
+                    self._vm.rename_pak_comment_key(node.path, new_path)
+                except Exception:
+                    pass
             
             # 如果当前正在预览该图片，清除预览或更新路径
             if hasattr(self, "_current_preview_path") and self._current_preview_path == node.path:
@@ -1449,23 +1736,7 @@ class MainWindow(QMainWindow):
                 cfg = load_config()
                 changed = False
                 
-                # 1. 更新备注
-                comments = cfg.get("comments", {})
-                new_comments = {}
-                for p, c in comments.items():
-                    if p == old_rel:
-                        new_comments[new_rel] = c
-                        changed = True
-                    elif p.startswith(old_rel + os.sep):
-                        new_p = new_rel + p[len(old_rel):]
-                        new_comments[new_p] = c
-                        changed = True
-                    else:
-                        new_comments[p] = c
-                if changed:
-                    cfg["comments"] = new_comments
-                
-                # 2. 更新记忆状态
+                # 1. 更新记忆状态
                 saved_states = cfg.get("saved_enabled_mods_dict", {})
                 states_changed = False
                 for state_name, paths in saved_states.items():
@@ -1485,7 +1756,7 @@ class MainWindow(QMainWindow):
                     cfg["saved_enabled_mods_dict"] = saved_states
                     changed = True
                     
-                # 3. 更新旧版记忆状态
+                # 2. 更新旧版记忆状态
                 legacy_saved = cfg.get("saved_enabled_mods")
                 if legacy_saved:
                     new_legacy = []
@@ -1547,6 +1818,8 @@ class MainWindow(QMainWindow):
         node: FsNode = index.internalPointer()
         
         if index.column() == 3:
+            if not node.is_pak:
+                return
             old_comment = node.comment
             new_comment, ok = self._input_text(tr("编辑备注"), tr("请输入备注信息："), old_comment, QLineEdit.EchoMode.Normal)
             if ok and new_comment != old_comment:
@@ -1555,14 +1828,7 @@ class MainWindow(QMainWindow):
                     self._tree_model.dataChanged.emit(index, index, [Qt.ItemDataRole.DisplayRole])
                 
                 try:
-                    rel_path = os.path.relpath(node.path, self.source_dir)
-                    cfg = load_config()
-                    comments = cfg.get("comments", {})
-                    if new_comment:
-                        comments[rel_path] = new_comment
-                    else:
-                        comments.pop(rel_path, None)
-                    save_config({"comments": comments})
+                    self._vm.save_pak_comment(node.path, new_comment)
                 except Exception:
                     pass
             return
@@ -1625,7 +1891,7 @@ class MainWindow(QMainWindow):
             node.preview_path = target_path
             self._set_side_preview(target_path, is_pak=True)
             
-            pixmap = load_qpixmap(target_path, QSize(40, 40))
+            pixmap = load_cached_thumb(target_path, THUMB_CELL_SIZE)
             if pixmap and not pixmap.isNull():
                 self._tree_model.set_node_thumb(node, pixmap)
                 
@@ -1690,7 +1956,7 @@ class MainWindow(QMainWindow):
             node.preview_path = target_path
             self._set_side_preview(target_path, is_pak=True)
             
-            pixmap = load_qpixmap(target_path, QSize(40, 40))
+            pixmap = load_cached_thumb(target_path, THUMB_CELL_SIZE)
             if pixmap and not pixmap.isNull():
                 self._tree_model.set_node_thumb(node, pixmap)
                 
@@ -1828,8 +2094,10 @@ class MainWindow(QMainWindow):
                 rel = os.path.relpath(src, self.source_dir)
                 dst = normalize_path(os.path.join(self.target_dir, rel))
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
-                shutil.copy2(src, dst)
-                copied += 1
+                if symlink_or_copy(src, dst, self._symlink_mode):
+                    copied += 1
+                else:
+                    errors.append(f"{os.path.basename(src)}: 写入失败")
             except Exception as e:
                 errors.append(f"{os.path.basename(src)}: {e}")
                 
@@ -2082,8 +2350,10 @@ class MainWindow(QMainWindow):
                 try:
                     dst = normalize_path(os.path.join(self.target_dir, rel_path))
                     os.makedirs(os.path.dirname(dst), exist_ok=True)
-                    shutil.copy2(src, dst)
-                    copied += 1
+                    if symlink_or_copy(src, dst, self._symlink_mode):
+                        copied += 1
+                    else:
+                        errors.append(f"{os.path.basename(src)}: 写入失败")
                 except Exception as e:
                     errors.append(f"{os.path.basename(src)}: {e}")
                     

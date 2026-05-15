@@ -1,7 +1,7 @@
 {
   "source_dir": "I:\\games\\尘白模组管理器\\mods",
   "target_dir": "I:\\games\\Snow\\data\\game\\Game\\Content\\Paks\\mods",
-  "col2_width": 86,
+  "col2_width": 100,
   "col0_width": 352,
   "window_geometry": "01d9d0cb0003000000000000fffffff80000077f0000040f000000f0000000690000057f000003100000000002000000078000000000000000170000077f0000040f",
   "agreed_disclaimer": true,
@@ -64,28 +64,11 @@
   },
   "language": "zh_CN",
   "splitter_sizes": [
-    1320,
-    572
+    1092,
+    800
   ],
-  "comments": {
-    "4 互动\\安卡希雅·时之重奏\\缘音回响「Echo of Denstiny」\\acia is playing with the toy with her foot_P.pak": "摇杆换钉钉",
-    "1 休息室\\卜卜\\bu_base_lingerie_bra open_100_P.pak": "套装内衣开放式",
-    "1 休息室\\卜卜\\bu_base_lingerie_100_P.pak": "套装内衣",
-    "1 休息室\\卜卜\\bu_base_a little naughty_100_P.pak": "基地服心机",
-    "1 休息室\\卜卜\\bu_base_more naughty_100_P.pak": "基地服开放",
-    "3 皮肤\\辰星·琼弦\\欣描红妆「Rouge Bliss」心机\\SSR2_Chenxing_face-makeup_100_P.pak": "脸妆",
-    "3 皮肤\\辰星·琼弦\\欣描红妆「Rouge Bliss」心机\\SSR2_Chenxing_02_Sexy_100_P.pak": "透明性感",
-    "3 皮肤\\辰星·琼弦\\欣描红妆「Rouge Bliss」心机\\SSR2_Chenxing_02_Nude_100_P.pak": "全裸",
-    "3 皮肤\\芬妮·澄意\\默认\\nnyC_a little naughty_P.pak": "半透",
-    "3 皮肤\\安卡希雅·时之重奏\\默认[大头]\\Acacia_01b_LV2_Pink nipples_101_P.pak": "粉头",
-    "3 皮肤\\安卡希雅·时之重奏\\默认[大头]\\Acacia_01b_LV2_Pink nipples_Pubic hair_101_P.pak": "粉头露毛",
-    "3 皮肤\\安卡希雅·时之重奏\\默认[大头]\\Acacia_01b_LV2_Pubic hair_101_P.pak": "黑头露毛",
-    "3 皮肤\\安卡希雅·时之重奏\\默认[大头]\\Acacia_01b_LV2_Transparent clothes_102_P.pak": "透明衣服",
-    "3 皮肤\\肴·冬至\\粼粼尾浪「Sparkling Swell」心机\\[no bikini]YaoA_cos3_a little naughty_P.pak": "移除比基尼",
-    "3 皮肤\\凯茜娅·蓝闪\\贴身特助「 Private Secretary 」心机\\500-Katya_5_Secretary_P.pak": "异常",
-    "3 皮肤\\凯茜娅·蓝闪\\贴身特助「 Private Secretary 」心机\\500-Katya_5_Topless_P.pak": "异常",
-    "3 皮肤\\胧嫣·瑞狐\\珠光曳影「Lustrous Pearls」差分\\胧嫣-瑞狐-珠光曳影(基础)_100_P.pak": "必须",
-    "3 皮肤\\胧嫣·瑞狐\\珠光曳影「Lustrous Pearls」差分\\小提示.txt": "鼠标滚轮切换所有衣物，小键盘 0 切换胸部宝石，小键盘 1 切换上半配饰，小键盘 2 切换内裤，小键盘 3 切换手臂配饰，\n小键盘 4 切换群摆，小键盘5切换连体袜和鞋子，小键盘6切换尾巴 。"
-  },
-  "col3_width": 150
+  "comments": {},
+  "col3_width": 150,
+  "dnd_mode": false,
+  "symlink_mode": true
 }

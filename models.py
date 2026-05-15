@@ -27,6 +27,7 @@ class FsNode:
         
         # Computed State
         self.pak_enabled = False
+        self.link_mode: Optional[str] = None  # "link", "copy", or None
         self.dir_state: Optional[str] = None  # "enabled", "partial", None
 
     def row(self) -> int:
@@ -206,7 +207,13 @@ class FsTreeModel(QAbstractItemModel):
                 return node.name
             elif col == 2:
                 if node.is_pak:
-                    return tr("已启用") if node.pak_enabled else ""
+                    if node.pak_enabled:
+                        if node.link_mode == "link":
+                            return tr("已启用 · 链接")
+                        elif node.link_mode == "copy":
+                            return tr("已启用 · 拷贝")
+                        return tr("已启用")
+                    return ""
                 else:
                     if node.dir_state == "enabled":
                         return tr("已启用")
