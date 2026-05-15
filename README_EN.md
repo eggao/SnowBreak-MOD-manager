@@ -31,6 +31,14 @@ The folder where the game loads MODs, usually `GameFolder/Game/Content/Paks/mods
 ### Clear Target Directory
 Click "Clear Target Directory" to remove all installed MODs from the game's MOD folder.
 
+### Application Mode
+The toggle at the bottom bar switches between **Link** and **Copy** modes.
+
+- **Link mode**: Uses symbolic links to enable MODs without copying files, saving disk space and operating faster
+- **Copy mode**: Copies files to the target directory
+
+Switching to Link mode requires administrator privileges. After enabling, the status column will display "Enabled · Link" or "Enabled · Copy".
+
 ### DND Mode
 When enabled, hides items that don't contain `.pak` files to keep the list clean.
 

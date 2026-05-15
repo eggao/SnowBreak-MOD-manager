@@ -69,6 +69,6 @@
   ],
   "comments": {},
   "col3_width": 150,
-  "dnd_mode": false,
+  "dnd_mode": true,
   "symlink_mode": true
 }
