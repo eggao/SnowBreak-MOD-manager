@@ -4,3 +4,4 @@
 *.py[cod]
 /cache
 /mod_manager.config.json
+/nuitka-cache

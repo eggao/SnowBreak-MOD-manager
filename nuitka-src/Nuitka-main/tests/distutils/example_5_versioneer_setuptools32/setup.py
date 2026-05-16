@@ -1,0 +1,37 @@
+#     Copyright 2026, Kay Hayen, mailto:kay.hayen@gmail.com find license text at end of file
+
+
+"""Distutils example that contains only plain module."""
+
+import versioneer
+from setuptools import setup
+
+cmdclass = versioneer.get_cmdclass()
+setup(
+    name="example-5-versioneer-setuptools32",
+    author="Nuitka Contributors",
+    author_email="contributors@nuitka.invalid",
+    description="Nuitka distutils test case: example_5_versioneer_setuptools32",
+    url="https://nuitka.net",
+    packages=["some_package"],
+    version=versioneer.get_version(),
+    scripts=["runner"],
+    cmdclass=cmdclass,
+)
+
+#     Python test originally created or extracted from other peoples work. The
+#     parts from me are licensed as below. It is at least Free Software where
+#     it's copied from other people. In these cases, that will normally be
+#     indicated.
+#
+#     Licensed under the Apache License, Version 2.0 (the "License");
+#     you may not use this file except in compliance with the License.
+#     You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing, software
+#     distributed under the License is distributed on an "AS IS" BASIS,
+#     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#     See the License for the specific language governing permissions and
+#     limitations under the License.

@@ -1,0 +1,12 @@
+# yamllint disable rule:line-length
+# yamllint disable rule:indentation
+# yamllint disable rule:comments-indentation
+# yamllint disable rule:comments
+# too many spelling things, spell-checker: disable
+---
+- module-name: 'data_files_package' # checksum: 723c4af1
+  data-files:
+    - patterns:
+        - '**/*.txt'
+    - raw_dirs:
+        - 'os.path.join("raw_dir_expr")'
