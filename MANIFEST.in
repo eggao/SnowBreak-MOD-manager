@@ -1,0 +1,6 @@
+include icon.ico
+include qt.conf
+include file_version_info.txt
+include LICENSE
+include *.md
+recursive-include assets *.svg

@@ -5,3 +5,26 @@
 /cache
 /mod_manager.config.json
 /nuitka-cache
+/nuitka-src
+
+# pip / setuptools
+*.egg-info/
+*.egg
+/Pipfile
+/Pipfile.lock
+venv/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nuitka
+nuitka-crash-report.xml
+*.onefile-build/

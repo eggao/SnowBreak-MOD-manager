@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pak-mod-manager"
+version = "1.0.0"
+description = "PAK Universal MOD Manager - 通用的 PAK 模组管理工具"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "chenbai", email = ""}
+]
+keywords = ["pak", "mod", "manager", "game", "pyqt6"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.10"
+
+dependencies = [
+    "PyQt6>=6.5",
+    "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pyinstaller>=5.0",
+]
+
+[project.scripts]
+pak-mod-manager = "mod_manager:main"
+
+[project.urls]
+Homepage = "https://github.com/chenbai/pak-mod-manager"
+Issues = "https://github.com/chenbai/pak-mod-manager/issues"
+
+[tool.setuptools]
+py-modules = [
+    "config",
+    "i18n",
+    "models",
+    "mod_manager",
+    "transfer_helpers",
+    "ui",
+    "utils",
+    "workers",
+]
+include-package-data = false

@@ -8,9 +8,8 @@ def get_app_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 def resource_path(relative_path: str) -> str:
-    """Get absolute path to resource, works for dev and for PyInstaller"""
+    """Get absolute path to resource, works for dev, PyInstaller and Nuitka"""
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.dirname(os.path.abspath(__file__))

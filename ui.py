@@ -755,7 +755,7 @@ class MainWindow(QMainWindow):
         
         cfg = load_config()
         self._dnd_mode_enabled = cfg.get("dnd_mode", False)
-        self._symlink_mode = cfg.get("symlink_mode", True)
+        self._symlink_mode = cfg.get("symlink_mode", False)
         self.source_dir = normalize_path(str(cfg.get("source_dir", "")))
         self.target_dir = normalize_path(str(cfg.get("target_dir", "")))
 

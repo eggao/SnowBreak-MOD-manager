@@ -7,12 +7,13 @@ from config import load_config, save_config
 from config import resource_path
 from ui import MainWindow, THEME_QSS
 from i18n import init_i18n, tr
+
 from utils import has_symlink_permission, relaunch_as_admin
 
 def main():
     if sys.platform == "win32":
         cfg = load_config()
-        if cfg.get("symlink_mode", True) and not has_symlink_permission():
+        if cfg.get("symlink_mode", False) and not has_symlink_permission():
             relaunch_as_admin()
             sys.exit(0)
 
@@ -62,4 +63,15 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        err_msg = traceback.format_exc()
+        try:
+            from PyQt6.QtWidgets import QApplication, QMessageBox
+            app = QApplication(sys.argv)
+            QMessageBox.critical(None, "错误", f"程序启动失败:\n{err_msg}")
+        except Exception:
+            sys.stderr.write(err_msg)
+        sys.exit(1)
