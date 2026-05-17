@@ -7,15 +7,15 @@ name = "pak-mod-manager"
 version = "1.0.0"
 description = "PAK Universal MOD Manager - 通用的 PAK 模组管理工具"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = []
 authors = [
-    {name = "chenbai", email = ""}
+    {name = "pak_mod_manager"}
 ]
 keywords = ["pak", "mod", "manager", "game", "pyqt6"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -33,6 +33,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pyinstaller>=5.0",
+    "cx-Freeze>=7.0",
 ]
 
 [project.scripts]

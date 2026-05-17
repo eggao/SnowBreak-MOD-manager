@@ -1,0 +1,10 @@
+Looking in indexes: https://pypi.org/simple/
+Requirement already satisfied: cx-Freeze in c:\users\lmcdw\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (8.6.4)
+Requirement already satisfied: freeze-core>=0.6.1 in c:\users\lmcdw\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from cx-Freeze) (0.6.1)
+Requirement already satisfied: packaging>=25.0 in c:\users\lmcdw\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from cx-Freeze) (26.2)
+Requirement already satisfied: setuptools<83.0,>=78.1.1 in c:\users\lmcdw\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from cx-Freeze) (82.0.1)
+Requirement already satisfied: tomli>=2.0.1 in c:\users\lmcdw\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from cx-Freeze) (2.4.1)
+Requirement already satisfied: lief<0.18,>=0.15.1 in c:\users\lmcdw\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from cx-Freeze) (0.17.6)
+Requirement already satisfied: filelock>=3.20.3 in c:\users\lmcdw\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from freeze-core>=0.6.1->cx-Freeze) (3.29.0)
+Requirement already satisfied: cabarchive>=0.2.4 in c:\users\lmcdw\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from freeze-core>=0.6.1->cx-Freeze) (0.2.5)
+Requirement already satisfied: striprtf>=0.0.26 in c:\users\lmcdw\.pyenv\pyenv-win\versions\3.10.11\lib\site-packages (from freeze-core>=0.6.1->cx-Freeze) (0.0.32)

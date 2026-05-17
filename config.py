@@ -8,11 +8,14 @@ def get_app_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 def resource_path(relative_path: str) -> str:
-    """Get absolute path to resource, works for dev, PyInstaller and Nuitka"""
+    """Get absolute path to resource, works for dev, PyInstaller, Nuitka and cx_Freeze"""
     try:
         base_path = sys._MEIPASS
     except Exception:
-        base_path = os.path.dirname(os.path.abspath(__file__))
+        if getattr(sys, "frozen", False) and hasattr(sys, "executable"):
+            base_path = os.path.dirname(sys.executable)
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
 def normalize_path(path: str) -> str:

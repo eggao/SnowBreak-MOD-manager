@@ -22,8 +22,9 @@ try {
 Write-Host ""
 
 Write-Host "[2/5] 安装依赖..."
-python -m pip install --upgrade pip *>$null
-python -m pip install -e ".[dev]" 2>&1
+python -m ensurepip --upgrade *>$null
+python -m pip install --upgrade pip -i https://pypi.org/simple/ *>$null
+python -m pip install -e ".[dev]" -i https://pypi.org/simple/ 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[警告] 依赖安装可能有异常，继续尝试编译..."
 }
@@ -54,9 +55,10 @@ $pyiArgs = @(
     "--icon=$PSScriptRoot\icon.ico",
     "--noconsole",
     "--version-file=$PSScriptRoot\version_info.txt",
-    "--runtime-tmpdir", "PAKModMgr",
+    # "--runtime-tmpdir", "PAKModMgr",
     "--add-data=$PSScriptRoot\icon.ico;.",
     "--add-data=$PSScriptRoot\qt.conf;.",
+    "--add-data=$PSScriptRoot\License;.",
     "--noupx",
     "--clean",
     "--workpath=$PSScriptRoot\build_temp",
